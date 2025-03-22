@@ -412,3 +412,7 @@ class VoiceAssistant {
         // Initialize local database for storing chat history
         // This is a placeholder for future implementation
     }
+}
+
+// Export the VoiceAssistant class for use in other modules
+export default VoiceAssistant;
