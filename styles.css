@@ -1,0 +1,283 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Arial', sans-serif;
+}
+
+body {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+    -webkit-tap-highlight-color: transparent; /* Remove tap highlight on mobile */
+    overscroll-behavior: none; /* Prevent pull-to-refresh */
+}
+
+.container {
+    width: 100%;
+    max-width: 540px;
+    background: #fff;
+    border-radius: 10px;
+    padding: 30px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+}
+
+h1 {
+    color: #333;
+    text-align: center;
+    margin-bottom: 20px;
+    font-size: 28px;
+}
+
+.input-section {
+    display: flex;
+    margin-bottom: 20px;
+}
+
+#taskInput {
+    flex: 1;
+    padding: 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px 0 0 4px;
+    font-size: 16px;
+    outline: none;
+    transition: border-color 0.3s;
+}
+
+#taskInput:focus {
+    border-color: #764ba2;
+}
+
+#addBtn {
+    background: #764ba2;
+    color: white;
+    border: none;
+    padding: 12px 20px;
+    border-radius: 0 4px 4px 0;
+    cursor: pointer;
+    font-size: 16px;
+    transition: background 0.3s;
+}
+
+#addBtn:hover {
+    background: #667eea;
+}
+
+.filter-section {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 20px;
+    gap: 10px;
+}
+
+.filter-btn {
+    background: #f5f5f5;
+    border: none;
+    padding: 8px 15px;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all 0.3s;
+    min-width: 70px; /* Ensure buttons are large enough for touch */
+}
+
+.filter-btn:hover {
+    background: #e0e0e0;
+}
+
+.filter-btn.active {
+    background: #764ba2;
+    color: white;
+}
+
+#taskList {
+    list-style: none;
+    margin-bottom: 20px;
+}
+
+.task-item {
+    background: #f9f9f9;
+    padding: 12px 15px;
+    border-radius: 4px;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    animation: slideIn 0.3s ease-out;
+    transition: background 0.3s;
+}
+
+@keyframes slideIn {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.task-item:hover {
+    background: #f0f0f0;
+}
+
+.task-checkbox {
+    margin-right: 10px;
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    position: relative;
+    appearance: none;
+    -webkit-appearance: none;
+    border: 2px solid #764ba2;
+    border-radius: 4px;
+    outline: none;
+    transition: all 0.3s;
+}
+
+.task-checkbox:checked {
+    background-color: #764ba2;
+}
+
+.task-checkbox:checked::after {
+    content: '✓';
+    position: absolute;
+    color: white;
+    font-size: 14px;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.task-text {
+    flex: 1;
+    font-size: 16px;
+    transition: color 0.3s, text-decoration 0.3s;
+}
+
+.completed .task-text {
+    color: #999;
+    text-decoration: line-through;
+}
+
+.task-actions {
+    display: flex;
+    gap: 5px;
+}
+
+.edit-btn, .delete-btn {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: 16px;
+    padding: 5px;
+    border-radius: 4px;
+    transition: background 0.3s;
+}
+
+.edit-btn {
+    color: #667eea;
+}
+
+.delete-btn {
+    color: #ff6b6b;
+}
+
+.edit-btn:hover, .delete-btn:hover {
+    background: rgba(0, 0, 0, 0.05);
+}
+
+.task-stats {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: #777;
+    font-size: 14px;
+}
+
+#clearCompletedBtn {
+    background: transparent;
+    border: none;
+    color: #764ba2;
+    cursor: pointer;
+    font-size: 14px;
+    transition: color 0.3s;
+}
+
+#clearCompletedBtn:hover {
+    color: #667eea;
+    text-decoration: underline;
+}
+
+/* Toast notification */
+.toast {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-100px);
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 12px 20px;
+    border-radius: 4px;
+    font-size: 14px;
+    z-index: 1000;
+    opacity: 0;
+    transition: transform 0.3s, opacity 0.3s;
+}
+
+.toast.show {
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
+}
+
+/* Voice assistant button */
+.voice-assistant-btn {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 60px;
+    height: 60px;
+    background: linear-gradient(135deg, #764ba2, #667eea);
+    border: none;
+    border-radius: 50%;
+    color: white;
+    font-size: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+    z-index: 100;
+    transition: transform 0.3s, background 0.3s;
+}
+
+.voice-assistant-btn:hover {
+    transform: scale(1.05);
+}
+
+.voice-assistant-btn.listening {
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(118, 75, 162, 0.7); }
+    70% { box-shadow: 0 0 0 15px rgba(118, 75, 162, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(118, 75, 162, 0); }
+}
+
+/* Network status indicator */
+.network-status {
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background-color: #4CAF50; /* Green for online */
+    z-index: 1000;
+}
+
+.network-status.offline {
+    background-color: #F44336; /* Red for offline */
+}
+
+/* Responsive design */
+@media (max-width: 600px) {
+    .container {
+        padding:
