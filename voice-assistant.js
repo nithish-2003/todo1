@@ -15,53 +15,269 @@ class VoiceAssistant {
     }
 
     initSpeechRecognition() {
-        if ('webkitSpeechRecognition' in window) {
+        // Check for different speech recognition APIs
+        if ('SpeechRecognition' in window) {
+            this.recognition = new SpeechRecognition();
+        } else if ('webkitSpeechRecognition' in window) {
             this.recognition = new webkitSpeechRecognition();
-            this.recognition.continuous = true;
-            this.recognition.interimResults = true;
-            this.recognition.lang = 'en-US';
-
-            this.recognition.onresult = this.handleSpeechResult.bind(this);
-            this.recognition.onerror = this.handleSpeechError.bind(this);
         } else {
-            console.error('Speech recognition not supported');
+            console.error('Speech recognition not supported on this device');
+            this.addMessageToChat('system', 'Speech recognition is not supported on your device. Please use text input instead.');
+            return;
         }
+        
+        // Configure recognition settings
+        this.recognition.continuous = true;
+        this.recognition.interimResults = false; // Set to false for better Android compatibility
+        this.recognition.maxAlternatives = 1;
+        this.recognition.lang = 'en-US';
+
+        // Set up event handlers
+        this.recognition.onresult = this.handleSpeechResult.bind(this);
+        this.recognition.onerror = this.handleSpeechError.bind(this);
+        this.recognition.onend = this.handleSpeechEnd.bind(this);
+        
+        console.log('Speech recognition initialized');
     }
 
     initVoices() {
         let voices = [];
         const setVoices = () => {
             voices = this.synthesis.getVoices();
-            this.femaleVoice = voices.find(voice => voice.name.includes('female') || voice.name.includes('Female'));
+            
+            // Enhanced scoring system for female voice selection
+            const scoredVoices = voices.map(voice => {
+                let score = 0;
+                const nameLower = voice.name.toLowerCase();
+                
+                // Stronger female voice detection
+                if (nameLower.includes('female') || nameLower.includes('woman') || 
+                    nameLower.includes('girl') || nameLower.includes('f ')) {
+                    score += 20; // Increased priority
+                }
+                
+                // Expanded list of common female voice names
+                const femaleNames = [
+                    'samantha', 'victoria', 'karen', 'moira', 'tessa', 'veena', 
+                    'fiona', 'alice', 'lisa', 'amy', 'emma', 'sarah', 'zira',
+                    'cortana', 'siri', 'alexa'
+                ];
+                
+                if (femaleNames.some(name => nameLower.includes(name))) {
+                    score += 15;
+                }
+                
+                // Prefer English voices
+                if (voice.lang && voice.lang.startsWith('en')) {
+                    score += 10;
+                }
+                
+                // Prefer high-quality voices
+                if (nameLower.includes('google') || nameLower.includes('microsoft')) {
+                    score += 8;
+                }
+                
+                // Prefer native voices
+                if (!nameLower.includes('remote') && !nameLower.includes('network')) {
+                    score += 5;
+                }
+                
+                return { voice, score };
+            });
+            
+            // Sort by score (highest first)
+            scoredVoices.sort((a, b) => b.score - a.score);
+            
+            // Select the highest scoring voice
+            this.femaleVoice = scoredVoices.length > 0 ? scoredVoices[0].voice : null;
+            
+            // Fallback to first available voice if no suitable voice found
+            if (!this.femaleVoice && voices.length > 0) {
+                this.femaleVoice = voices[0];
+            }
+            
+            console.log('Available voices:', voices.map(v => `${v.name} (${v.lang})`).join(', '));
+            console.log('Selected voice:', this.femaleVoice ? 
+                `${this.femaleVoice.name} (${this.femaleVoice.lang})` : 'None');
+            console.log('Voice score:', this.femaleVoice ? 
+                scoredVoices[0].score : 'N/A');
         };
-
+    
+        // Try to set voices immediately
         setVoices();
-        if (speechSynthesis.onvoiceschanged !== undefined) {
-            speechSynthesis.onvoiceschanged = setVoices;
+        
+        // Also set up event listener for when voices are loaded asynchronously
+        if (this.synthesis.onvoiceschanged !== undefined) {
+            this.synthesis.onvoiceschanged = setVoices;
         }
     }
 
     startListening() {
-        if (this.recognition && !this.isListening) {
+        if (!this.recognition) {
+            console.error('Speech recognition not initialized');
+            return;
+        }
+        
+        if (this.isListening) {
+            console.log('Already listening');
+            return;
+        }
+        
+        try {
+            console.log('Starting speech recognition...');
             this.recognition.start();
             this.isListening = true;
+            
+            // Update UI to show listening state
+            const voiceBtn = document.querySelector('.voice-assistant-btn');
+            if (voiceBtn) {
+                voiceBtn.classList.add('listening');
+            }
+            
+            // Safety timeout - if recognition doesn't trigger onend after 30 seconds,
+            // restart it (prevents Android hanging issues)
+            this.listeningTimeout = setTimeout(() => {
+                console.log('Listening timeout - restarting recognition');
+                this.stopListening();
+                setTimeout(() => this.startListening(), 500);
+            }, 30000);
+            
+        } catch (error) {
+            console.error('Error starting speech recognition:', error);
+            this.isListening = false;
+            
+            // Try to reinitialize and restart after a delay
+            setTimeout(() => {
+                this.initSpeechRecognition();
+                this.startListening();
+            }, 1000);
         }
     }
 
     stopListening() {
-        if (this.recognition && this.isListening) {
+        if (!this.recognition) {
+            return;
+        }
+        
+        if (!this.isListening) {
+            return;
+        }
+        
+        try {
+            console.log('Stopping speech recognition...');
             this.recognition.stop();
             this.isListening = false;
+            
+            // Clear safety timeout
+            if (this.listeningTimeout) {
+                clearTimeout(this.listeningTimeout);
+                this.listeningTimeout = null;
+            }
+            
+            // Update UI to show not listening state
+            const voiceBtn = document.querySelector('.voice-assistant-btn');
+            if (voiceBtn) {
+                voiceBtn.classList.remove('listening');
+            }
+            
+        } catch (error) {
+            console.error('Error stopping speech recognition:', error);
         }
     }
 
     speak(text) {
+        // Cancel any ongoing speech
+        this.synthesis.cancel();
+        
         const utterance = new SpeechSynthesisUtterance(text);
+        
+        // Set voice (female preferred)
         if (this.femaleVoice) {
             utterance.voice = this.femaleVoice;
         }
-        utterance.pitch = 1.2;
-        utterance.rate = 1.0;
+        
+        // Enhanced voice characteristics optimization
+        if (this.femaleVoice && this.femaleVoice.name) {
+            const voiceName = this.femaleVoice.name.toLowerCase();
+            
+            // Default settings optimized for feminine voice
+            let pitchSetting = 1.15;  // Slightly higher pitch
+            let rateSetting = 0.98;   // Slightly slower for clarity
+            
+            // Fine-tuned settings based on voice type
+            if (voiceName.includes('google')) {
+                pitchSetting = 1.08;
+                rateSetting = 1.0;
+            } else if (voiceName.includes('microsoft')) {
+                pitchSetting = 1.05;
+                rateSetting = 0.95;
+            } else if (voiceName.includes('apple')) {
+                pitchSetting = 1.12;
+                rateSetting = 0.97;
+            }
+            
+            utterance.pitch = pitchSetting;
+            utterance.rate = rateSetting;
+        } else {
+            // Optimized fallback settings
+            utterance.pitch = 1.15;
+            utterance.rate = 0.98;
+        }
+        
+        utterance.volume = 1.0; // Full volume
+        
+        // Log voice being used
+        console.log('Speaking with voice:', utterance.voice ? utterance.voice.name : 'Default');
+        console.log('Voice settings - Pitch:', utterance.pitch, 'Rate:', utterance.rate);
+        
+        // Add event handlers to track speech status
+        utterance.onstart = () => {
+            console.log('Speech started');
+            // Temporarily pause recognition while speaking to prevent feedback loop
+            if (this.isListening) {
+                this.stopListening();
+            }
+            
+            // Update UI to show speaking state
+            const voiceBtn = document.querySelector('.voice-assistant-btn');
+            if (voiceBtn) {
+                voiceBtn.classList.add('speaking');
+            }
+        };
+        
+        utterance.onend = () => {
+            console.log('Speech ended');
+            
+            // Update UI to show not speaking state
+            const voiceBtn = document.querySelector('.voice-assistant-btn');
+            if (voiceBtn) {
+                voiceBtn.classList.remove('speaking');
+            }
+            
+            // Resume listening after speaking is done with a slight delay
+            // to prevent immediate recognition of background noise
+            setTimeout(() => {
+                if (this.conversationState === 'active' && !this.isListening) {
+                    this.startListening();
+                }
+            }, 500); // Increased delay for better conversation flow
+        };
+        
+        utterance.onerror = (event) => {
+            console.error('Speech synthesis error:', event);
+            // Remove speaking state if error occurs
+            const voiceBtn = document.querySelector('.voice-assistant-btn');
+            if (voiceBtn) {
+                voiceBtn.classList.remove('speaking');
+            }
+            
+            // Resume listening if error occurs
+            if (this.conversationState === 'active' && !this.isListening) {
+                this.startListening();
+            }
+        };
+        
+        // Speak the text
         this.synthesis.speak(utterance);
     }
 
@@ -109,34 +325,120 @@ class VoiceAssistant {
     }
 
     handleSpeechResult(event) {
-        const transcript = Array.from(event.results)
-            .map(result => result[0].transcript.toLowerCase())
-            .join('');
+        // Get the transcript from the speech recognition results
+        let transcript = '';
+        let isFinal = false;
+        
+        // Process results
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+            transcript += event.results[i][0].transcript.toLowerCase();
+            if (event.results[i].isFinal) {
+                isFinal = true;
+            }
+        }
+        
+        // Log the transcript for debugging
+        console.log('Transcript:', transcript, 'Final:', isFinal);
+        
+        // Reset consecutive errors counter since we got a result
+        this.consecutiveErrors = 0;
         
         // Check for wake word if not already in conversation
-        if (this.conversationState === 'idle' && transcript.includes(this.wakeWord)) {
-            this.conversationState = 'active';
-            this.speak('Yes, I\'m listening.');
-            this.addMessageToChat('system', 'Darling Assistant activated');
-            this.addMessageToChat('assistant', 'How can I help you today?');
-            return;
+        if (this.conversationState === 'idle') {
+            // Use a more flexible wake word detection
+            // This handles slight variations in pronunciation
+            const wakeWordVariations = [
+                this.wakeWord,
+                this.wakeWord.replace(' ', ''),  // No space
+                'hey darlin',                    // Common pronunciation variation
+                'hay darling',                   // Accent variation
+                'hey darleen',                   // Another variation
+                'hi darling',                    // Another common variation
+                'hello darling'                  // Formal variation
+            ];
+            
+            const hasWakeWord = wakeWordVariations.some(variation => 
+                transcript.includes(variation));
+                
+            if (hasWakeWord) {
+                console.log('Wake word detected');
+                this.conversationState = 'active';
+                
+                // Add visual feedback
+                this.addMessageToChat('system', 'Darling Assistant activated');
+                
+                // Speak response and show in chat
+                const response = 'Yes, I\'m listening. How can I help you today?';
+                this.addMessageToChat('assistant', response);
+                this.speak(response);
+                
+                // Clear the recognition and restart
+                this.stopListening();
+                setTimeout(() => this.startListening(), 800); // Longer delay for better user experience
+                return;
+            }
         }
-        
-        // Process commands if in active conversation
-        if (this.conversationState === 'active' && event.results[0].isFinal) {
-            this.processCommand(transcript);
-        }
-    }
 
     handleSpeechError(event) {
         console.error('Speech recognition error:', event.error);
-        if (event.error === 'no-speech') {
-            // No speech detected, continue listening
-            return;
+        this.isListening = false;
+        
+        // Track consecutive errors to detect persistent problems
+        if (!this.consecutiveErrors) this.consecutiveErrors = 0;
+        this.consecutiveErrors++;
+        
+        // Handle different error types
+        switch (event.error) {
+            case 'no-speech':
+                // No speech detected, silently restart listening without notification
+                setTimeout(() => this.startListening(), 300);
+                this.consecutiveErrors = 0; // Reset error counter for this common case
+                return;
+                
+            case 'aborted':
+                // Recognition was aborted, likely by our own code
+                setTimeout(() => this.startListening(), 500);
+                return;
+                
+            case 'audio-capture':
+                this.addMessageToChat('system', 'I can\'t access your microphone. Please check your device settings.');
+                break;
+                
+            case 'network':
+                this.addMessageToChat('system', 'Network error occurred. Please check your connection.');
+                break;
+                
+            case 'not-allowed':
+            case 'service-not-allowed':
+                this.addMessageToChat('system', 'Microphone access denied. Please enable microphone permissions.');
+                break;
+                
+            default:
+                // Only show error message if we're in active conversation
+                if (this.conversationState === 'active') {
+                    this.addMessageToChat('system', 'Sorry, I had trouble hearing you. Please try again.');
+                }
+                break;
         }
         
+        // If we have too many consecutive errors, suggest troubleshooting
+        if (this.consecutiveErrors > 5) {
+            this.addMessageToChat('system', 'I\'m having trouble with speech recognition. You might want to try refreshing the page or using text input instead.');
+            this.consecutiveErrors = 0; // Reset after notifying
+        }
+        
+        // Attempt to restart listening after a short delay
+        setTimeout(() => this.startListening(), 1000);
+    }
+    
+    handleSpeechEnd() {
+        console.log('Speech recognition ended');
+        this.isListening = false;
+        
+        // Restart listening if we're in active conversation mode
         if (this.conversationState === 'active') {
-            this.addMessageToChat('system', 'Sorry, I had trouble hearing you.');
+            console.log('Restarting speech recognition...');
+            setTimeout(() => this.startListening(), 500);
         }
     }
 
@@ -155,7 +457,15 @@ class VoiceAssistant {
             const taskText = transcript.replace(/add (a )?task|create (a )?task/g, '').trim();
             if (taskText) {
                 this.addTask(taskText);
-                response = `I've added "${taskText}" to your task list.`;
+                
+                // More varied and natural responses
+                const responses = [
+                    `I've added "${taskText}" to your task list.`,
+                    `Task added: "${taskText}".`,
+                    `"${taskText}" has been added to your tasks.`,
+                    `Got it! "${taskText}" is now on your list.`
+                ];
+                response = responses[Math.floor(Math.random() * responses.length)];
             } else {
                 response = 'What task would you like to add?';
                 this.pendingTask = { action: 'add' };
@@ -166,7 +476,15 @@ class VoiceAssistant {
             const taskIndex = this.extractTaskIndex(transcript);
             if (taskIndex !== null) {
                 this.completeTask(taskIndex);
-                response = `I've marked task ${taskIndex + 1} as completed.`;
+                
+                // More varied and natural responses
+                const responses = [
+                    `I've marked task ${taskIndex + 1} as completed.`,
+                    `Task ${taskIndex + 1} is now complete.`,
+                    `Great job finishing task ${taskIndex + 1}!`,
+                    `Task ${taskIndex + 1} completed. Well done!`
+                ];
+                response = responses[Math.floor(Math.random() * responses.length)];
             } else {
                 response = 'Which task would you like to mark as completed?';
                 this.pendingTask = { action: 'complete' };
@@ -176,7 +494,15 @@ class VoiceAssistant {
             const taskIndex = this.extractTaskIndex(transcript);
             if (taskIndex !== null) {
                 this.deleteTask(taskIndex);
-                response = `I've deleted task ${taskIndex + 1}.`;
+                
+                // More varied and natural responses
+                const responses = [
+                    `I've deleted task ${taskIndex + 1}.`,
+                    `Task ${taskIndex + 1} has been removed.`,
+                    `I've removed task ${taskIndex + 1} from your list.`,
+                    `Task ${taskIndex + 1} is now deleted.`
+                ];
+                response = responses[Math.floor(Math.random() * responses.length)];
             } else {
                 response = 'Which task would you like to delete?';
                 this.pendingTask = { action: 'delete' };
